@@ -21,4 +21,10 @@ Shared architecture and standards are documented in [`../../shared/README.md`](.
 Trade inputs reset when the user changes trading mode or a transaction reaches success.
 These resets no longer require synchronous effects.
 
-See the [dependency migration notes](../../shared/testing.md#dependency-migration-2026-10-05) for compiler and linter requirements.
+See the [compiler and linter requirements](../../shared/testing.md#compiler-and-linter-compatibility) for toolchain compatibility.
+
+## Safe submissions
+
+The shared transaction writer retains unresolved Safe submissions across reloads.
+The wallet status panel checks execution without sending another transaction.
+See [Safe transaction tracking](../../shared/frontend-architecture.md#safe-transaction-tracking) for receipt checks and recovery limits.

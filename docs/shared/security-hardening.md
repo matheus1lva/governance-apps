@@ -1,7 +1,7 @@
 # Security Hardening: Production Baseline
 
-Status: Active baseline for production apps (`styfi`, `veyfi`)
-Date: 2026-02-12
+Status: Active baseline for all application routes
+Updated: 2026-11-17
 
 This document defines the enforced frontend security controls and release invariants.
 
@@ -12,7 +12,7 @@ Operational playbook:
 ## 1. Scope and Runtime Split
 
 - `styfi` and `veyfi` are production surfaces.
-- `yeth` is treated as non-production and is disabled by default in production runtime.
+- Additional applications use explicit production exposure flags. A disabled route must remain inaccessible on paths and dedicated hosts.
 - Debug routes are disabled by default in production runtime.
 
 ## 2. Supply Chain and Dependency Policy
@@ -111,13 +111,8 @@ The Undici override pins every installed copy to 7.30.1, which includes the
 [October security fixes](https://github.com/nodejs/undici/releases/tag/v7.30.1).
 Both versions meet the seven-day release-age policy. The install-script allowlist is unchanged.
 
-Two wallet SDK dependencies still require Zod 3:
-`@coinbase/cdp-sdk` uses 3.25.76 and `@reown/appkit-wallet` uses 3.22.4.
-They remain advisory findings. Their runtime exposure is not established by the lockfile.
-A global Zod 4 override breaks their declared API compatibility and is not a safe patch.
-The wallet dependency review in [#123](https://github.com/yearn/governance-apps/issues/123)
-must retain these findings until supported SDK changes or separate containment work resolves them.
-A wallet UI migration alone does not prove their removal.
+The completed wallet migration removed `@coinbase/cdp-sdk` and `@reown/appkit-wallet` from the lockfile.
+Their historical Zod findings no longer apply to the installed dependency graph.
 
 ### 2.6 DAO immutable attachment boundary
 
@@ -140,6 +135,59 @@ intended block-exchange and pinning paths. The browser renders cards only and
 makes no asset request until the user opens one. A card is accepted only for a
 sole image token in a top-level body paragraph after the summary; nested or
 mixed image contexts fail. It never renders SVG inline.
+
+### 2.7 Glob and minimatch compatibility overrides
+
+The following exact-parent overrides address
+[glob cancellation](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) and
+[minimatch pattern amplification](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+They also replace the earlier minifier-only glob 10.5.0 override.
+
+| Parent | Installed child |
+| --- | --- |
+| `@opennextjs/cloudflare@1.20.16` | `glob@14.0.4` |
+| `@node-minify/core@9.0.2` | `glob@14.0.4` |
+| `eslint@10.12.0` | `minimatch@11.0.6` |
+| `@eslint/config-array@0.23.5` | `minimatch@11.0.6` |
+| `@typescript-eslint/typescript-estree@8.70.1` | `minimatch@11.0.6` |
+| `glob@14.0.4` | `minimatch@11.0.6` |
+
+Upgrade glob and minimatch together. Minimatch 11 uses Matcher objects where older glob releases expect regular expressions.
+Glob 14 supports that representation. ESLint and its parser use the retained matching APIs.
+The legacy React, import, and accessibility plugins retain their callable minimatch 3 dependency.
+Do not replace those copies with a global minimatch 11 override.
+
+Glob 14 provides CommonJS and ESM module APIs but removes its CLI.
+The app's build tools use module APIs and need no CLI replacement.
+Tests cover OpenNext manifest discovery, cache Path objects, real minification, hostile filenames, cancellation, lint discovery, and parser boundaries.
+The cancellation tests check that filesystem reads stop after rejection.
+The pattern test checks the default preprocessing limit in a process with bounded time and memory.
+
+All selected releases meet the seven-day rule. The Node 26 toolchain meets their engine requirements.
+No direct dependency, install-script exception, or release-age exception is added.
+When an accepted parent upgrade provides compatible patched children, remove its override and rerun the compatibility tests and Worker build.
+
+### 2.8 Picomatch repeated extglob guard
+
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) has no
+published fix as of 18 November 2026. Picomatch is used by the wallet
+dependency tree and by build and test tools. Some tools bundle their own copies.
+
+The root `postinstall` hook patches the locked picomatch 2.3.2 and 4.0.7
+parsers and the copies embedded in Next.js, Playwright, and dotenvx. The guard
+checks the original and patched file hashes. A changed version or unexpected
+file stops the install for review. Production-only installs patch all present
+copies and can omit the development-only ones.
+
+The patched parser rejects repeated extglob operators `+(…)` and `*(…)` before
+it compiles a regular expression. Use standard globs such as `**/*.ts` or
+braces such as `*.{ts,tsx}` for repository file selection.
+
+Run `npm ci` with scripts enabled. Both build commands run
+`npm run check:picomatch` to verify the installed guard. The registry audit
+still reports the affected upstream versions because the fix is local.
+Keep that finding visible. When an upstream fix is available, update all
+standalone and bundled copies, rerun the full checks, then remove the guard.
 
 ## 3. Production Runtime Invariants
 
@@ -304,3 +352,18 @@ Future hardening (recommended):
 - Publish signed payloads with key rotation policy.
 - Verify signatures in API routes before payload admission.
 - Add freshness/rollback guards (timestamp + monotonic version checks).
+
+
+## Bounded requests and route policies
+
+The global Stats and legacy yETH feeds share the bounded feed transport.
+One 10-second deadline covers each fetch and its response body.
+The global feed limit is 1 MiB. The legacy yETH feed limit is 64 KiB.
+The same limits apply to the API proxies and direct client reads.
+Timeout responses use HTTP 504 and no-store. Existing upstream status and cache headers retain their previous behavior.
+
+All registered application paths use nonce-based script policies, including Teams and Pulse.
+The same policy applies on shared hosts and dedicated app hosts.
+Teams supports Safe iframe embedding on both URL forms. Pulse denies embedding.
+
+The quality workflow grants only contents-read permission and does not persist checkout credentials.

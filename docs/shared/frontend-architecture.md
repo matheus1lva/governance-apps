@@ -119,16 +119,77 @@ See [`debug-runtime-contract.md`](debug-runtime-contract.md),
 All writes follow:
 
 ```text
-domain eligibility -> prepare/simulate -> useTx -> receipt -> query invalidation
+domain eligibility -> useTx -> prepare/simulate -> receipt -> query invalidation
 ```
 
 - Domain clients encode arguments and preserve protocol-specific checks.
 - `useTx` owns signing, submitted/mining state, receipt, normalized errors, and
   completion.
+- One hook instance accepts one execution at a time, including preparation and refresh.
+- Reset hides the current status. It does not cancel a submitted transaction or allow another execution before settlement.
+- Success requires a successful receipt for the original call or its repriced replacement.
+- A cancelled or changed replacement fails. Receipt links use the canonical transaction hash.
+- Refresh and observer errors do not change a confirmed transaction into a failed transaction.
+- Independent query refreshes run concurrently after confirmation.
+- Custom receipt handlers own their domain validation and pending-wallet behavior.
 - Approval and primary actions remain separate unless the protocol itself offers
   one atomic operation.
 - Wrong-network and simulation failures block normal submission.
 - UI code never fabricates canonical history while a producer feed catches up.
+
+### Safe transaction tracking
+
+The shared writer saves the exact call before it opens a smart-contract wallet.
+The record includes the account, chain, target, calldata, value, and submission block.
+A Web Lock serializes updates for that account and chain across tabs.
+An unresolved record blocks another submission of the same call.
+Records survive reloads in local storage. Unavailable or damaged storage blocks new smart-wallet submissions.
+
+stYFI, veYFI, Teams, YBC, legacy yETH, and token approvals use this writer.
+The shared status panel resumes their pending submissions after navigation or reload.
+DAO and live yETH recovery retain their domain-specific intent stores and validation.
+All three paths use the same wallet identification and canonical receipt verifier.
+Ordinary accounts and EIP-7702 delegated accounts retain the Ethereum receipt path.
+
+A Safe proposal hash is not an Ethereum transaction hash.
+The wallet can supply an execution candidate through `wallet_getCallsStatus` or its legacy receipt method.
+Only the configured public RPC can establish the canonical receipt, block, and Safe execution event.
+Shared and DAO completion also require the exact inner `CALL` target, calldata, and value.
+Nested operations and delegate calls remain unresolved.
+
+A successful outer receipt does not prove that the Safe action succeeded.
+An inner `ExecutionFailure` consumes the proposal but reports failure.
+An outer revert leaves the proposal pending because it can execute again.
+A consumed nonce can release the retry block without claiming that the action succeeded.
+The UI links only verified Ethereum execution hashes.
+
+A lost wallet response leaves an uncertain intent, including when an error contains the word "rejected".
+Only explicit wallet rejection code `4001` permits automatic removal before a submission identifier exists.
+A manually supplied hash can prove an identical call, but cannot identify the original uncertain proposal.
+The user must check the wallet queue and recent activity before explicit reconciliation of an uncertain submission.
+If no identifier exists, this manual review can remove the local retry block without an execution receipt.
+It does not cancel a wallet proposal or prove that no proposal exists.
+This reconciliation has a neutral outcome and never invokes the original action's success callback.
+
+The recovery controls never send a transaction.
+Local storage and Web Locks coordinate tabs on the same origin, not other devices or separate app origins.
+Clearing browser storage removes that local protection. The Safe queue remains the source for outstanding proposals.
+
+### Query lifetime and independent reads
+
+stYFI and veYFI account hooks accept an optional `enabled` argument. Live APR and voting-power hooks disable their mock-only account subscriptions.
+Independent account, reward, metadata, and statistics reads run concurrently. Epoch-dependent reads still wait for their epoch.
+APR reads share one pinned block and retain the final canonical-block check. Chain validation precedes YBC snapshot reads.
+Post-confirmation refreshes run concurrently. stYFI, veYFI, and legacy yETH preparation runs inside the transaction lifecycle.
+Polling resolves custom app hostnames through the shared route map.
+Each protocol client retains its caches until its own feed or usable RPC client changes. An unrelated domain feed does not recreate it.
+
+Pulse and recovery readers retain accepted publications for the lifetime of their query cache. Teams retains its accepted canonical baseline for that lifetime.
+A route or wallet-session remount cannot reset those rollback guards. Separate query clients keep separate acceptance state.
+Pulse compares compact accepted publications, including tuple metadata, and reuses unchanged feed objects. The query does not repeat a deep structural comparison.
+
+Theme and nudge preferences tolerate unavailable browser storage. Nudge dismissal still applies to the current mounted view.
+Trade forms clear input when a new trade succeeds. A previous trade's success does not clear a later rejected attempt.
 
 ## 7. Server endpoints
 

@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/guard-picomatch.mjs",
+    "check:picomatch": "node scripts/guard-picomatch.mjs --check",
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "build": "npm run check:picomatch && next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "worker:build": "opennextjs-cloudflare build",
+    "preview": "npm run worker:build && opennextjs-cloudflare preview",
+    "worker:build": "npm run check:picomatch && opennextjs-cloudflare build",
     "worker:deploy": "opennextjs-cloudflare deploy -- --keep-vars",
     "worker:deploy:preprod": "opennextjs-cloudflare deploy -c wrangler.preprod.jsonc -- --keep-vars",
     "worker:deploy:prod": "opennextjs-cloudflare deploy -c wrangler.jsonc -- --keep-vars",
@@ -72,7 +74,6 @@
     "@types/react-dom": "19.2.3",
     "@typescript/native": "npm:typescript@7.0.2",
     "ajv": "8.20.0",
-    "baseline-browser-mapping": "2.10.27",
     "eslint": "10.12.0",
     "eslint-config-next": "16.4.5",
     "jsdom": "30.1.3",
@@ -91,6 +92,24 @@
     },
     "eslint-plugin-jsx-a11y@6.10.2": {
       "eslint": "$eslint"
+    },
+    "@opennextjs/cloudflare@1.20.16": {
+      "glob": "14.0.4"
+    },
+    "@node-minify/core@9.0.2": {
+      "glob": "14.0.4"
+    },
+    "eslint@10.12.0": {
+      "minimatch": "11.0.6"
+    },
+    "@eslint/config-array@0.23.5": {
+      "minimatch": "11.0.6"
+    },
+    "@typescript-eslint/typescript-estree@8.70.1": {
+      "minimatch": "11.0.6"
+    },
+    "glob@14.0.4": {
+      "minimatch": "11.0.6"
     }
   },
   "engines": {
